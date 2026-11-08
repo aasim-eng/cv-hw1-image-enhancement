@@ -1,0 +1,13 @@
+image,method,psnr,ssim,mae
+1,baseline,14.4351,0.312,41.9668
+1,contrast_stretch,15.8334,0.3008,37.3201
+1,hist_eq_L,10.6747,0.2422,69.2333
+1,nlm_then_hist_eq_L,10.5918,0.3853,71.1051
+2,baseline,14.4436,0.4267,43.2975
+2,contrast_stretch,17.0032,0.5126,32.3035
+2,hist_eq_L,10.3515,0.3579,71.0275
+2,nlm_then_hist_eq_L,10.3094,0.3911,72.207
+4,baseline,14.7661,0.3944,41.5849
+4,contrast_stretch,18.8703,0.45,25.0003
+4,hist_eq_L,11.4688,0.3183,61.1735
+4,nlm_then_hist_eq_L,11.5093,0.4178,62.1283
