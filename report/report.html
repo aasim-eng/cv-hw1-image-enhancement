@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="author" content="Mohammad Aasim">
+<title>Homework 1 — Image Enhancement</title>
+<style>
+  @page { size: A4; margin: 16mm 17mm 17mm 17mm; }
+  body { font-family: "Liberation Serif", "Times New Roman", Times, serif; font-size: 10.5pt; line-height: 1.34; color: #111; margin: 0; }
+  h1, h2 { font-family: "Liberation Sans", Arial, Helvetica, sans-serif; color: #111; }
+  h1 { font-size: 17pt; margin: 0 0 2pt; }
+  h2 { font-size: 11.5pt; margin: 10pt 0 3pt; break-after: avoid-page; page-break-after: avoid; }
+  p { margin: 0 0 5pt; text-align: justify; }
+  .sub { font-family: "Liberation Sans", Arial, sans-serif; font-size: 9.5pt; color: #333; margin-bottom: 8pt; border-bottom: 1px solid #999; padding-bottom: 5pt; }
+  .fill { background: #fff3a0; }
+  .sub a { color: #1a4f8b; text-decoration: none; }
+  code { font-family: "Liberation Mono", Menlo, monospace; font-size: 8.8pt; }
+  ul { margin: 0 0 5pt; padding-left: 16pt; }
+  li { margin: 0 0 3pt; text-align: justify; }
+  table { border-collapse: collapse; width: 100%; font-size: 8.7pt; margin: 3pt 0 4pt; }
+  th, td { border-top: 1px solid #bbb; border-bottom: 1px solid #bbb; padding: 2.5pt 3pt; text-align: center; }
+  th:first-child, td:first-child { text-align: left; }
+  thead tr:first-child th { border-top: 1.5px solid #333; }
+  thead tr:last-child th { border-bottom: 1.5px solid #333; }
+  tbody tr:last-child td { border-bottom: 1.5px solid #333; }
+  td.sep, th.sep { border-left: 1px solid #bbb; }
+  tr.mean td { background: #f2f2f2; }
+  .cap { font-size: 9.2pt; color: #222; margin: 2pt 0 8pt; text-align: justify; }
+  figure { margin: 6pt 0 0; break-inside: avoid; }
+  figure img { width: 100%; display: block; }
+  .refs p { font-size: 9.2pt; text-align: left; margin-bottom: 3pt; }
+  .eq { font-style: italic; }
+</style>
+</head>
+<body>
+
+<h1>Homework 1 — Image Enhancement</h1>
+<div class="sub">Computer Vision, Fall 2026 · University of Verona ·
+  Mohammad Aasim · Student ID VR558207<br>
+  Repository: <a href="https://github.com/aasim-eng/cv-hw1-image-enhancement">https://github.com/aasim-eng/cv-hw1-image-enhancement</a></div>
+
+<h2>1. Objective</h2>
+<p>This homework builds and compares a small pipeline to enhance colour photos with non-uniform illumination, low contrast and noise, using only classical image processing (OpenCV and NumPy, no deep learning). The aim is not to rebuild the scene perfectly, but to justify each choice and to study the trade-offs between visible detail, noise and natural appearance.</p>
+
+<h2>2. Images and degradation</h2>
+<p>I use three of my own night photos (iPhone 13 Pro Max, 28 October 2026, 3024 × 4032 px): <b>1.jpg</b>, a park with a cloudy sky and very dark grass; <b>2.jpg</b>, a bench under a street lamp, with strong light and deep shadows; <b>4.jpg</b>, a gravel path with dark trees under a dark blue sky. They have low contrast, deep shadows and uneven light: in each photo 55–58% of the pixels are very dark (L* &lt; 20 on the 0–100 CIE Lab scale). The photos were converted from HEIC to JPEG (quality 95) and from Display P3 to sRGB, and all metadata (EXIF, GPS) was removed. Licence: CC BY 4.0 (own work). The images are in the repository (<code>data/original</code>, with <code>IMAGE_SOURCES.md</code>).</p>
+<p>Each photo is resized with OpenCV <code>INTER_AREA</code> so that its longest side is 800 px (600 × 800). This resized image is the <b>reference</b>, saved as PNG in <code>data/reference</code>. The degraded version is made in a fixed, reproducible way (<code>src/degrade.py</code>), with the same parameters and the same random seed for every photo: (1) the contrast is halved around mid-grey, <span class="eq">I<sub>d</sub> = 128 + 0.5 (I − 128)</span>; (2) Gaussian noise with mean 0 and standard deviation σ = 10 (0–255 scale) is added, with seed 42; (3) the values are clipped to [0, 255], rounded and saved as lossless PNG in <code>data/degraded</code>. Because the photos are dark, pulling them towards mid-grey also makes them brighter, like a grey veil (mean L* from 22–25 to 39–40), and it halves their colour saturation (mean chroma from 8.0–14.3 to 4.3–7.0 before the noise; L* and chroma measured with <code>cv2.cvtColor</code> to Lab).</p>
+<p><b>The original images serve only as references for evaluating these synthetic degradations. In real-world scenarios a clean reference is usually not available.</b></p>
+
+<h2>3. Methods and parameters</h2>
+<p>All methods take the same degraded images and use the same parameters for every photo (<code>src/methods.py</code>; all settings are at the top of <code>run_all.py</code>).</p>
+<ul>
+  <li><b>M1 Baseline:</b> the degraded image without processing.</li>
+  <li><b>M2 Linear contrast stretching, on luminance.</b> The image is converted to CIE Lab (OpenCV, 8 bits, L in 0–255). The 1st percentile p<sub>1</sub> of L is mapped to 0 and the 99th percentile p<sub>99</sub> to 255, <span class="eq">L′ = 255 (L − p<sub>1</sub>) / (p<sub>99</sub> − p<sub>1</sub>)</span>, then clipped; a and b are not changed [5]. Percentiles are used instead of the minimum and maximum, because a few noisy pixels would otherwise decide the range. Working on L avoids the colour shifts of a per-channel stretch (where B, G and R would each get a different gain), but the noise in L is multiplied by the same gain as the details.</li>
+  <li><b>M3 Histogram equalization of the luminance.</b> <code>cv2.equalizeHist</code> [1, 5] is applied to the L channel only; a and b are kept, so the hue does not change. The tones change in a strongly non-linear way, and the many dark levels of a night photo are spread over a wide range, which also amplifies the noise in large dark areas.</li>
+  <li><b>M4 Denoising + equalization (a motivated combination).</b> First non-local means denoising, <code>cv2.fastNlMeansDenoisingColored</code> [1, 2] with h = hColor = 5, 7 × 7 patches and a 21 × 21 search window; then M3. Denoising comes first, because equalization amplifies noise. Denoising may also smooth fine details: a larger h removes more noise but also more image detail [1]. We tried h = 3, 5, 7 and 10. With h = 10 the trees and the gravel became flat, “painted” areas; with h = 3 much grain was left. h = 5 looked like the best balance, and it also had the highest SSIM on 1.jpg and 2.jpg (0.385 and 0.391) and almost the highest on 4.jpg (0.418; 0.424 with h = 7).</li>
+</ul>
+
+<h2>4. Evaluation</h2>
+<p>For each photo and method, three metrics compare the result with the reference: <b>PSNR</b> in dB (own implementation, equal to <code>cv2.PSNR</code>; higher is better), <b>SSIM</b> [3] (scikit-image [4], computed per colour channel and averaged, data range 255; higher is better) and <b>MAE</b>, the mean absolute error (own implementation; lower is better). For each photo and method, a side-by-side figure (original | degraded | result) is saved in <code>results/figures</code>. This report shows one summary figure per photo with all methods and a zoomed square (bottom row, shown without smoothing), with the same intensity scale in every panel. Software: Python 3.11, NumPy 2.4.6, OpenCV 5.0.0.93, scikit-image 0.26.0, Matplotlib 3.11.2. One command (<code>python run_all.py</code>, about 20 s) makes all images, figures and <code>results/metrics.csv</code>; running it twice gives identical files.</p>
+
+<h2>5. Results</h2>
+<p class="cap"><b>Table 1.</b> Metrics against the reference for each photo and method (PSNR in dB and SSIM: higher is better; MAE: lower is better). Best value of each column in bold.</p>
+<table>
+<thead>
+<tr><th rowspan="2">Method</th><th colspan="3" class="sep">1.jpg</th><th colspan="3" class="sep">2.jpg</th><th colspan="3" class="sep">4.jpg</th><th colspan="3" class="sep">Mean of the 3 photos</th></tr>
+<tr><th class="sep">PSNR</th><th>SSIM</th><th>MAE</th><th class="sep">PSNR</th><th>SSIM</th><th>MAE</th><th class="sep">PSNR</th><th>SSIM</th><th>MAE</th><th class="sep">PSNR</th><th>SSIM</th><th>MAE</th></tr>
+</thead>
+<tbody>
+<tr><td>M1 Baseline (degraded)</td><td class="sep">14.44</td><td>0.312</td><td>41.97</td><td class="sep">14.44</td><td>0.427</td><td>43.30</td><td class="sep">14.77</td><td>0.394</td><td>41.58</td><td class="sep">14.55</td><td>0.378</td><td>42.28</td></tr>
+<tr><td>M2 Contrast stretching (L)</td><td class="sep"><b>15.83</b></td><td>0.301</td><td><b>37.32</b></td><td class="sep"><b>17.00</b></td><td><b>0.513</b></td><td><b>32.30</b></td><td class="sep"><b>18.87</b></td><td><b>0.450</b></td><td><b>25.00</b></td><td class="sep"><b>17.24</b></td><td><b>0.421</b></td><td><b>31.54</b></td></tr>
+<tr><td>M3 Histogram equalization (L)</td><td class="sep">10.67</td><td>0.242</td><td>69.23</td><td class="sep">10.35</td><td>0.358</td><td>71.03</td><td class="sep">11.47</td><td>0.318</td><td>61.17</td><td class="sep">10.83</td><td>0.306</td><td>67.14</td></tr>
+<tr><td>M4 Denoising + equalization</td><td class="sep">10.59</td><td><b>0.385</b></td><td>71.11</td><td class="sep">10.31</td><td>0.391</td><td>72.21</td><td class="sep">11.51</td><td>0.418</td><td>62.13</td><td class="sep">10.80</td><td>0.398</td><td>68.48</td></tr>
+</tbody>
+</table>
+
+<figure><img src="figures/1_summary.jpg" alt="All methods for photo 1.jpg"></figure>
+<p class="cap"><b>Figure 1.</b> 1.jpg. Top: the whole images (the white square is the zoom area). Bottom: the zoom (lit tree line and dark grass).</p>
+
+<p><b>Contrast stretching (M2)</b> has the best PSNR and the lowest MAE on all three photos, and the best SSIM on 2.jpg and 4.jpg. It removes most of the grey veil (mean L* 35–38) and gives back strong blacks and highlights, so the clouds, the tree lines and the gravel are clear and the scene still looks like a night photo, with no colour shift. The price is noise: the grain is stretched together with the details (zooms in Fig. 1–3), and on 1.jpg its SSIM (0.301) is even a little lower than that of the degraded image (0.312).</p>
+<p><b>Histogram equalization (M3)</b> has the lowest SSIM on all photos and a PSNR of only 10.4–11.5 dB, about 3–4 dB below the baseline. It spreads L over the whole range, so the mean L* becomes 50.6 on every photo (references: 22–25): the night becomes mid-grey. It shows the most detail in the shadows (the grass in Fig. 1, the dark trees in Fig. 3), but with very strong grain in all the dark areas.</p>
+<p><b>Denoising + equalization (M4)</b> has almost the same PSNR and MAE as M3, because it has the same brightness (mean L* about 51), but a higher SSIM on every photo (0.385, 0.391 and 0.418 against 0.242, 0.358 and 0.318): the denoising removes most of the grain before the equalization. Its trade-offs are smoother textures (grass, gravel, leaves), dark blocky spots in the tree tops (Fig. 1 and 3), and pale colours: denoising also removes the colour noise, and what is left is the halved colour of the degraded image (mean chroma 4.6–7.0, references 8.0–14.3).</p>
+
+<figure><img src="figures/2_summary.jpg" alt="All methods for photo 2.jpg"></figure>
+<p class="cap"><b>Figure 2.</b> 2.jpg. Zoom: the bench, its shadow and the grass under the street lamp.</p>
+
+<figure><img src="figures/4_summary.jpg" alt="All methods for photo 4.jpg"></figure>
+<p class="cap"><b>Figure 3.</b> 4.jpg. Zoom: the trees, the lit edge of the lawn and the gravel.</p>
+
+<h2>6. Discussion</h2>
+<p><b>Case 1 — the same PSNR, a very different image (M3 and M4).</b> On 4.jpg, M3 and M4 have almost the same PSNR (11.47 and 11.51 dB) and MAE (61.17 and 62.13), and on 2.jpg too (10.35 and 10.31 dB). But M3 is covered in grain, while M4 is clean (Fig. 2 and 3, zooms). PSNR and MAE average the error of single pixels, and here the error is dominated by the big global change of brightness (both methods make the night mid-grey), so the noise hardly changes the numbers. SSIM compares local mean, contrast and structure, so it sees the difference (0.318 against 0.418 on 4.jpg).</p>
+<p><b>Case 2 — the metrics disagree with each other and with the eye (1.jpg).</b> On 1.jpg, M4 has the best SSIM (0.385) but the lowest PSNR (10.59 dB), and it does not look best: the grass becomes grey and blotchy and the colours are pale. Contrast stretching has the best PSNR (15.83 dB) and MAE, but an SSIM below the degraded image (0.301 against 0.312), although it clearly looks better than the degraded image: the grey veil is gone and the clouds and the tree line are sharp. A numerical improvement is therefore not always a more pleasing image, and no method should be chosen with one metric alone.</p>
+<p><b>2.jpg (Fig. 2).</b> I prefer contrast stretching. The bench, its shadow, the tree trunks and the light under the lamp are easier to see than in the degraded image, and the colours stay natural. The trade-off is visible grain on the gravel and the grass. M4 is cleaner and shows the dark grass better, but the grass and the gravel look smooth, almost painted, and the colours are pale; M3 makes the whole scene grey and grainy. There are no halos, because M2 and M3 change every pixel with the same global curve.</p>
+<p><b>4.jpg (Fig. 3).</b> I prefer contrast stretching again: the gravel keeps a crisp texture, the dark blue of the sky comes back and the trees separate well from the sky. The artifact is noise, strongest in the sky and in the dark trees. M4 removes this noise but turns the gravel into a smooth, pale surface and adds dark blocky spots in the tree tops (loss of detail), while M3 shows more of the dark trees but with the strongest grain.</p>
+<p><b>Limitations.</b> Only three photos, all taken at night. The synthetic degradation (a global contrast reduction towards mid-grey plus Gaussian noise) is simpler than real low-light noise, which depends on the brightness and on the colour channel; it also brightens and desaturates the photos, and none of the methods gives the colour back, because M2–M4 change only L. The denoising strength h was chosen by looking at the results, and the percentiles (1 and 99) were not optimised. The references are themselves phone night photos with their own noise and processing, so they are not a perfect ground truth.</p>
+
+<h2>7. Conclusion</h2>
+<p>For these night photos no method is best in every way. Linear contrast stretching on the luminance is the simplest method, it is the best by PSNR and MAE (and by SSIM on two photos), and it keeps a natural night look, but it amplifies the noise. Histogram equalization reveals the most shadow detail, but it makes the night mid-grey and very grainy. Denoising before the equalization removes most of that grain and clearly raises SSIM, at the cost of smoother textures and pale colours, while its PSNR stays low because of the change of brightness. The best choice depends on the goal: a natural image (contrast stretching) or the most visible detail in the dark areas (denoising + equalization).</p>
+
+<div class="refs">
+<h2>References</h2>
+<p>[1] OpenCV documentation: Histogram Equalization; Image Denoising (<code>fastNlMeansDenoisingColored</code>); Color conversions. https://docs.opencv.org</p>
+<p>[2] A. Buades, B. Coll, J.-M. Morel, “A non-local algorithm for image denoising,” Proc. IEEE Conference on Computer Vision and Pattern Recognition (CVPR), 2005.</p>
+<p>[3] Z. Wang, A. C. Bovik, H. R. Sheikh, E. P. Simoncelli, “Image quality assessment: from error visibility to structural similarity,” IEEE Transactions on Image Processing, 13(4), 600–612, 2004.</p>
+<p>[4] scikit-image documentation: <code>skimage.metrics.structural_similarity</code>. https://scikit-image.org</p>
+<p>[5] R. C. Gonzalez, R. E. Woods, <i>Digital Image Processing</i>, 4th ed., Pearson, 2018.</p>
+</div>
+
+</body>
+</html>
