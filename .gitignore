@@ -1,0 +1,13 @@
+# Python environment and cache (made on your computer, not needed on GitHub)
+.venv/
+venv/
+__pycache__/
+
+# Hidden Mac files
+.DS_Store
+
+# Private phone photos: they have the GPS location inside. Never upload them.
+phone-originals-HEIC-PRIVATE/
+
+# The homework text from the professor: it is not our work, so it does not go online
+HW1-ImageEnhancement.pdf
